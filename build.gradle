@@ -1,0 +1,24 @@
+plugins {
+    id 'java-library'
+    id 'java-gradle-plugin'
+}
+
+group = 'dev.lukebemish'
+
+gradlePlugin {
+    website = "https://github.com/lukebemishprojects/ExtendedJavaConventions/"
+    vcsUrl = "https://github.com/lukebemishprojects/ExtendedJavaConventions.git"
+
+    plugins {
+        extendedJavaConventions {
+            id = 'dev.lukebemish.extended-java-conventions'
+            displayName = 'ExtendedJavaConventions'
+            description = 'Tool to set up development environments for Minecraft mods'
+            implementationClass = 'dev.lukebemish.extendedjavaconventions.ExtendedJavaConventionsPlugin'
+        }
+    }
+}
+
+dependencies {
+    gradleApi()
+}

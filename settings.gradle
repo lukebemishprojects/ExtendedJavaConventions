@@ -1,0 +1,31 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven {
+            url "https://maven.lukebemish.dev/releases/"
+        }
+    }
+    plugins {
+        id 'dev.lukebemish.managedversioning' version '1.2.23'
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+    id 'dev.lukebemish.conventions' version '0.1.10'
+}
+
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
+        maven {
+            name 'Staging'
+            url 'https://maven.lukebemish.dev/staging/'
+        }
+    }
+
+    repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
+}
+
+rootProject.name = 'extended-java-conventions'
+

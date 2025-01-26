@@ -1,0 +1,19 @@
+pluginManagement {
+    includeBuild '../'
+
+    repositories {
+        gradlePluginPortal()
+        maven {
+            name 'Staging'
+            url 'https://maven.lukebemish.dev/staging/'
+        }
+    }
+}
+
+plugins {
+    id 'dev.lukebemish.extended-java-conventions'
+}
+
+includeBuild '../'
+
+rootProject.name = 'test'
