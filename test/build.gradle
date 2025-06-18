@@ -6,21 +6,25 @@ plugins {
 group = 'dev.lukebemish.extended-java-conventions.test'
 version = '1.0.0'
 
-sourceSets {
-    feature {}
-}
-
 java {
     registerFeature('feature') {
-        usingSourceSet(sourceSets.feature)
+        usingSourceSet(sourceSets.create('feature'))
+    }
+    registerFeature('feature2') {
+        usingSourceSet(sourceSets.create('feature2'))
     }
 }
 
 dependencies {
-    featureSourceImplementation(project(':'))
-    sourceImplementation(project(':')) {
+    featureImplementation(project(':'))
+    implementation(project(':')) {
         capabilities {
             requireFeature('feature')
+        }
+    }
+    api(project(':')) {
+        capabilities {
+            requireFeature('feature2')
         }
     }
 }

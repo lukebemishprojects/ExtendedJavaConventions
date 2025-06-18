@@ -3,8 +3,12 @@ package dev.lukebemish.extendedjavaconventions;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.PublishArtifact;
+import org.gradle.api.attributes.AttributeCompatibilityRule;
+import org.gradle.api.attributes.AttributeDisambiguationRule;
 import org.gradle.api.attributes.Bundling;
-import org.gradle.api.attributes.DocsType;
+import org.gradle.api.attributes.Category;
+import org.gradle.api.attributes.CompatibilityCheckDetails;
+import org.gradle.api.attributes.MultipleCandidatesDetails;
 import org.gradle.api.attributes.Usage;
 import org.gradle.api.attributes.java.TargetJvmEnvironment;
 import org.gradle.api.attributes.java.TargetJvmVersion;
@@ -41,93 +45,127 @@ public abstract class ExtendedJavaConventions {
     }
 
     public void sourcepath() {
+        getProject().getDependencies().getAttributesSchema().attribute(Usage.USAGE_ATTRIBUTE, strategy -> {
+            strategy.getCompatibilityRules().add(JavaApiSourcesCompatabilityRule.class);
+            strategy.getDisambiguationRules().add(JavaApiSourcesDisambiguationRule.class);
+        });
         getSourceSets().configureEach(this::sourcepath);
     }
 
-    public void sourcepath(SourceSet sourceSet) {
-        var sourceImplementation = getConfigurations().dependencyScope(sourceSet.getTaskName(null, "sourceImplementation"));
-        var sourceCompileOnly = getConfigurations().dependencyScope(sourceSet.getTaskName(null, "sourceCompileOnly"));
-        var sourceCompileOnlyApi = getConfigurations().dependencyScope(sourceSet.getTaskName(null, "sourceCompileOnlyApi"));
-        var sourceApi = getConfigurations().dependencyScope(sourceSet.getTaskName(null, "sourceApi"));
+    private static final String JAVA_API_SOURCES = "java-api-sources";
 
-        var compileClasspath = getConfigurations().named(sourceSet.getCompileClasspathConfigurationName(), config -> {
-            config.extendsFrom(sourceImplementation.get());
-            config.extendsFrom(sourceCompileOnly.get());
-            config.extendsFrom(sourceCompileOnlyApi.get());
-            config.extendsFrom(sourceApi.get());
-        });
+    public static final class JavaApiSourcesDisambiguationRule implements AttributeDisambiguationRule<Usage> {
 
-        FeatureUtils.forSourceSetFeature(getProject(), sourceSet.getName(), false, context -> {
-            var sourcepathElements = getConfigurations().consumable(sourceSet.getTaskName(null, "sourcepathElements"), config -> {
-                config.attributes(attributes -> {
-                    attributes.attribute(DocsType.DOCS_TYPE_ATTRIBUTE, getObjects().named(DocsType.class, DocsType.SOURCES));
-                    attributes.attribute(Bundling.BUNDLING_ATTRIBUTE, getObjects().named(Bundling.class, Bundling.EXTERNAL));
-                    attributes.attribute(TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE, getObjects().named(TargetJvmEnvironment.class, TargetJvmEnvironment.STANDARD_JVM));
-                    attributes.attribute(Usage.USAGE_ATTRIBUTE, getObjects().named(Usage.class, "java-api-sources"));
-                    attributes.attributeProvider(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, getProject().provider(() -> compileClasspath.get().getAttributes().getAttribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE)));
-                });
-                config.extendsFrom(sourceApi.get());
-                config.extendsFrom(sourceCompileOnlyApi.get());
-            });
-
-            getProject().getPluginManager().withPlugin("java-library", p -> {
-                var api = getConfigurations().named(sourceSet.getApiConfigurationName());
-                var compileOnlyApi = getConfigurations().named(sourceSet.getCompileOnlyApiConfigurationName());
-                sourcepathElements.get().extendsFrom(api.get());
-                sourcepathElements.get().extendsFrom(compileOnlyApi.get());
-            });
-
-            context.getApiElements().extendsFrom(sourceApi.get());
-            context.getApiElements().extendsFrom(sourceCompileOnlyApi.get());
-
-            context.getRuntimeElements().extendsFrom(sourceImplementation.get());
-            context.getRuntimeElements().extendsFrom(sourceApi.get());
-
-            sourcepathElements.get().getArtifacts().addAllLater(getProject().provider(() -> {
-                var artifacts = new ArrayList<PublishArtifact>();
-                for (var file : sourceSet.getAllJava().getSourceDirectories()) {
-                    artifacts.add(getObjects().newInstance(LazyDirectoryArtifact.class, "java-sources-directory", getProject().provider(() -> file), sourceSet.getAllJava().getSourceDirectories().getBuildDependencies()));
-                }
-                return artifacts;
-            }));
-
-            context.withCapabilities(sourcepathElements.get());
-        });
-
-        var artifactsView = compileClasspath.get().getIncoming().artifactView(config -> {
-            config.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, getObjects().named(Usage.class, "java-api-sources"));
-            config.withVariantReselection();
-        });
-        var artifactsProvider = artifactsView.getArtifacts().getResolvedArtifacts();
-
-        sourceSet.setCompileClasspath(getProject().files(artifactsProvider.map(set -> {
-            var list = new ArrayList<File>();
-            for (var artifact : set) {
-                var usage = artifact.getVariant().getAttributes().getAttribute(Usage.USAGE_ATTRIBUTE);
-                if (usage == null || !usage.getName().equals("java-api-sources")) {
-                    list.add(artifact.getFile());
+        @Override
+        public void execute(MultipleCandidatesDetails<Usage> details) {
+            var consumer = details.getConsumerValue() == null ? null : details.getConsumerValue().getName();
+            if (JAVA_API_SOURCES.equals(consumer)) {
+                for (var value : details.getCandidateValues()) {
+                    if (value.getName().equals(JAVA_API_SOURCES)) {
+                        details.closestMatch(value);
+                        return;
+                    } else if (value.getName().equals(Usage.JAVA_API)) {
+                        details.closestMatch(value);
+                        return;
+                    } else if (value.getName().equals(Usage.JAVA_RUNTIME)) {
+                        details.closestMatch(value);
+                        return;
+                    }
                 }
             }
-            return list;
-        })).builtBy(artifactsView.getArtifacts().getArtifactFiles()));
+        }
+    }
+
+    public static final class JavaApiSourcesCompatabilityRule implements AttributeCompatibilityRule<Usage> {
+
+        @Override
+        public void execute(CompatibilityCheckDetails<Usage> details) {
+            var consumer = details.getConsumerValue() == null ? null : details.getConsumerValue().getName();
+            var producer = details.getProducerValue() == null ? null : details.getProducerValue().getName();
+            if (JAVA_API_SOURCES.equals(consumer)) {
+                if (producer == null || producer.equals(Usage.JAVA_API) || producer.equals(Usage.JAVA_RUNTIME) || producer.equals(JAVA_API_SOURCES)) {
+                    details.compatible();
+                }
+            } else if (JAVA_API_SOURCES.equals(producer)) {
+                if (consumer == null || consumer.equals(Usage.JAVA_API) || consumer.equals(Usage.JAVA_RUNTIME) || consumer.equals(JAVA_API_SOURCES)) {
+                    details.compatible();
+                }
+            }
+        }
+    }
+
+    public void sourcepath(SourceSet sourceSet) {
+        var compileClasspath = getConfigurations().named(sourceSet.getCompileClasspathConfigurationName(), config -> {
+            config.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, getObjects().named(Usage.class, JAVA_API_SOURCES));
+        });
+
+        FeatureUtils.forSourceSetFeature(getProject(), sourceSet.getName(), context -> {
+            var sourcepathApi = getConfigurations().dependencyScope(sourceSet.getTaskName(null, "sourcepathApi"), config -> {
+                config.withDependencies(set -> {
+                    set.addAll(context.getApiElements().get().getAllDependencies());
+                });
+            });
+
+            getConfigurations().consumable(sourceSet.getTaskName(null, "sourcepathElements"), config -> {
+                config.attributes(attributes -> {
+                    attributes.attribute(Category.CATEGORY_ATTRIBUTE, getObjects().named(Category.class, Category.LIBRARY));
+                    attributes.attribute(Bundling.BUNDLING_ATTRIBUTE, getObjects().named(Bundling.class, Bundling.EXTERNAL));
+                    attributes.attribute(TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE, getObjects().named(TargetJvmEnvironment.class, TargetJvmEnvironment.STANDARD_JVM));
+                    attributes.attribute(Usage.USAGE_ATTRIBUTE, getObjects().named(Usage.class, JAVA_API_SOURCES));
+                    attributes.attributeProvider(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, getProject().provider(() -> compileClasspath.get().getAttributes().getAttribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE)));
+                });
+                config.extendsFrom(sourcepathApi.get());
+                context.withCapabilities(config);
+
+                config.getArtifacts().addAllLater(getProject().provider(() -> {
+                    var artifacts = new ArrayList<PublishArtifact>();
+                    for (var file : sourceSet.getAllJava().getSourceDirectories()) {
+                        artifacts.add(getObjects().newInstance(LazyDirectoryArtifact.class, "java-sources-directory", getProject().provider(() -> file), sourceSet.getAllJava().getSourceDirectories().getBuildDependencies()));
+                    }
+                    return artifacts;
+                }));
+            });
+        });
 
         getTasks().named(sourceSet.getCompileJavaTaskName(), JavaCompile.class, task -> {
+            var sourcesView = getConfigurations().named(sourceSet.getCompileClasspathConfigurationName()).get().getIncoming();
+            var sources = sourcesView.getArtifacts().getResolvedArtifacts().map(set -> {
+                var files = new ArrayList<File>();
+                for (var artifact : set) {
+                    var usage = artifact.getVariant().getAttributes().getAttribute(Usage.USAGE_ATTRIBUTE);
+                    if (usage != null && usage.getName().equals(JAVA_API_SOURCES)) {
+                        files.add(artifact.getFile());
+                    }
+                }
+                return files;
+            });
+            var binaries = sourcesView.getArtifacts().getResolvedArtifacts().map(set -> {
+                var files = new ArrayList<File>();
+                for (var artifact : set) {
+                    var usage = artifact.getVariant().getAttributes().getAttribute(Usage.USAGE_ATTRIBUTE);
+                    if (usage == null || !usage.getName().equals(JAVA_API_SOURCES)) {
+                        files.add(artifact.getFile());
+                    }
+                }
+                return files;
+            });
+
             var existing = task.getOptions().getSourcepath();
             var files = getProject().files();
             if (existing != null) {
                 files.from(existing);
             }
-            files.from(artifactsProvider.map(set -> {
-                var list = new ArrayList<File>();
-                for (var artifact : set) {
-                    var usage = artifact.getVariant().getAttributes().getAttribute(Usage.USAGE_ATTRIBUTE);
-                    if (usage != null && usage.getName().equals("java-api-sources")) {
-                        list.add(artifact.getFile());
-                    }
-                }
-                return list;
-            })).builtBy(artifactsView.getArtifacts().getArtifactFiles());
+            files.from(sources);
+            files.builtBy(sourcesView.getArtifacts().getArtifactFiles());
             task.getOptions().setSourcepath(files);
+
+            if (!Boolean.getBoolean("idea.sync.active")) {
+                // IntelliJ does not understand the source path -- so, during sync, we trick it a bit.
+                var classpath = getProject().files();
+                classpath.from(binaries);
+                classpath.builtBy(sourcesView.getArtifacts().getArtifactFiles());
+                task.setClasspath(classpath);
+            }
         });
     }
 

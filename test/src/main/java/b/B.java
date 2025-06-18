@@ -5,5 +5,6 @@ public class B {
 
     public static void main(String[] args) {
         System.out.println(a.A.A);
+        System.out.println(c.C.C);
     }
 }

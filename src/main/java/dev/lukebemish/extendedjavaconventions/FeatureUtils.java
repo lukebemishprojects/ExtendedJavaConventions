@@ -1,45 +1,43 @@
 package dev.lukebemish.extendedjavaconventions;
 
 import org.gradle.api.Action;
+import org.gradle.api.NamedDomainObjectProvider;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationPublications;
-import org.gradle.api.artifacts.ConfigurationVariant;
 import org.gradle.api.component.AdhocComponentWithVariants;
 import org.gradle.api.component.ConfigurationVariantDetails;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 
 import javax.inject.Inject;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 class FeatureUtils {
     private FeatureUtils() {}
 
     public static abstract class Context {
-        private final Configuration runtimeElements;
-        private final Configuration apiElements;
+        private final NamedDomainObjectProvider<Configuration> runtimeElements;
+        private final NamedDomainObjectProvider<Configuration> apiElements;
+        private final Configuration firstFound;
         private final SourceSet sourceSet;
         private final AdhocComponentWithVariants component;
-        private final Configuration foundFirst;
 
         @Inject
         public abstract Project getProject();
 
         @Inject
-        public Context(SourceSet sourceSet, Configuration foundFirst) {
+        public Context(SourceSet sourceSet, Configuration firstFound) {
             this.sourceSet = sourceSet;
-            this.runtimeElements = getProject().getConfigurations().getByName(sourceSet.getRuntimeElementsConfigurationName());
-            this.apiElements = getProject().getConfigurations().getByName(sourceSet.getApiElementsConfigurationName());
-            this.foundFirst = foundFirst;
+            this.firstFound = firstFound;
+            this.runtimeElements = getProject().getConfigurations().named(sourceSet.getRuntimeElementsConfigurationName());
+            this.apiElements = getProject().getConfigurations().named(sourceSet.getApiElementsConfigurationName());
             this.component = (AdhocComponentWithVariants) getProject().getComponents().getByName("java");
         }
 
         public void withCapabilities(Configuration variant) {
-            foundFirst.getOutgoing().getCapabilities().forEach(capability ->
+            firstFound.getOutgoing().getCapabilities().forEach(capability ->
                 variant.getOutgoing().capability(capability)
             );
         }
@@ -57,17 +55,17 @@ class FeatureUtils {
             return sourceSet;
         }
 
-        public Configuration getRuntimeElements() {
+        public NamedDomainObjectProvider<Configuration> getRuntimeElements() {
             return runtimeElements;
         }
 
-        public Configuration getApiElements() {
+        public NamedDomainObjectProvider<Configuration> getApiElements() {
             return apiElements;
         }
 
         public void modifyOutgoing(Action<ConfigurationPublications> action) {
-            action.execute(apiElements.getOutgoing());
-            action.execute(runtimeElements.getOutgoing());
+            action.execute(apiElements.get().getOutgoing());
+            action.execute(runtimeElements.get().getOutgoing());
             var sourcesName = sourceSet.getSourcesElementsConfigurationName();
             var javadocName = sourceSet.getJavadocElementsConfigurationName();
             getProject().getConfigurations().configureEach(configuration -> {
@@ -78,78 +76,39 @@ class FeatureUtils {
         }
     }
 
-    public static void forSourceSetFeatures(Project project, List<String> sourceSetNames, boolean needsClassesResources, Action<List<Context>> action) {
-        AtomicInteger counter = new AtomicInteger(sourceSetNames.size());
-        Context[] contexts = new Context[sourceSetNames.size()];
-        for (int i = 0; i < sourceSetNames.size(); i++) {
-            String sourceSetName = sourceSetNames.get(i);
-            int finalI = i;
-            forSourceSetFeature(project, sourceSetName, needsClassesResources, context -> {
-                contexts[finalI] = context;
-                if (counter.decrementAndGet() == 0) {
-                    action.execute(List.of(contexts));
-                }
-            });
-        }
-    }
-
-    public static void forSourceSetFeature(Project project, String sourceSetName, boolean needsClassesResources, Action<Context> action) {
+    public static void forSourceSetFeature(Project project, String sourceSetName, Action<Context> action) {
         var sourceSet = project.getExtensions().getByType(SourceSetContainer.class).getByName(sourceSetName);
-        AtomicBoolean foundRuntimeElements = new AtomicBoolean(false);
-        AtomicBoolean foundApiElements = new AtomicBoolean(false);
-        AtomicBoolean executed = new AtomicBoolean(false);
-        AtomicBoolean foundApiClasses = new AtomicBoolean(false);
-        AtomicBoolean foundRuntimeClasses = new AtomicBoolean(false);
-        AtomicBoolean foundRuntimeResources = new AtomicBoolean(false);
-        AtomicReference<Configuration> foundFirst = new AtomicReference<>();
-        Runnable checkedAction = () -> {
-            if (foundRuntimeElements.get() && (!needsClassesResources || (foundRuntimeClasses.get() && foundRuntimeResources.get())) &&
-                foundApiElements.get() && foundApiClasses.get() &&
-                !executed.get()) {
+        var runtimeElementsLocated = new AtomicBoolean();
+        var apiElementsLocated = new AtomicBoolean();
+        var executed = new AtomicBoolean(false);
+        var firstFound = new AtomicReference<Configuration>();
+        Runnable onConfig = () -> {
+            if (runtimeElementsLocated.get() && apiElementsLocated.get() && !executed.get()) {
                 executed.set(true);
-                action.execute(project.getObjects().newInstance(Context.class, sourceSet, foundFirst.get()));
+                action.execute(project.getObjects().newInstance(Context.class, sourceSet, firstFound.get()));
             }
         };
-        Action<Configuration> configAction = configuration -> {
-            if (configuration.getName().equals(sourceSet.getRuntimeElementsConfigurationName())) {
-                foundRuntimeElements.set(true);
-                if (foundFirst.get() == null) {
-                    foundFirst.set(configuration);
-                }
-                if (needsClassesResources) {
-                    Action<ConfigurationVariant> variantsAction = variant -> {
-                        var name = variant.getName();
-                        if (name.equals("classes")) {
-                            foundRuntimeClasses.set(true);
-                            checkedAction.run();
-                        } else if (name.equals("resources")) {
-                            foundRuntimeResources.set(true);
-                            checkedAction.run();
-                        }
-                    };
-                    configuration.getOutgoing().getVariants().all(variantsAction);
-                    configuration.getOutgoing().getVariants().whenObjectAdded(variantsAction);
-                }
-                checkedAction.run();
-            } else if (configuration.getName().equals(sourceSet.getApiElementsConfigurationName())) {
-                foundApiElements.set(true);
-                if (foundFirst.get() == null) {
-                    foundFirst.set(configuration);
-                }
-                Action<ConfigurationVariant> variantsAction = variant -> {
-                    var name = variant.getName();
-                    if (name.equals("classes")) {
-                        foundApiClasses.set(true);
-                        checkedAction.run();
-                    }
-                };
-                configuration.getOutgoing().getVariants().all(variantsAction);
-                configuration.getOutgoing().getVariants().whenObjectAdded(variantsAction);
-                checkedAction.run();
-            }
-        };
-        // Ideally would be lazy -- we'll change it when we can
-        project.getConfigurations().all(configAction);
-        project.getConfigurations().whenObjectAdded(configAction);
+        var runtimeElements = project.getConfigurations().named(c -> c.equals(sourceSet.getRuntimeElementsConfigurationName()));
+        var apiElements = project.getConfigurations().named(c -> c.equals(sourceSet.getApiElementsConfigurationName()));
+        runtimeElements.whenObjectAdded(c -> {
+            firstFound.updateAndGet(old -> old == null ? c : old);
+            runtimeElementsLocated.set(true);
+            onConfig.run();
+        });
+        runtimeElements.all(c -> {
+            firstFound.updateAndGet(old -> old == null ? c : old);
+            runtimeElementsLocated.set(true);
+            onConfig.run();
+        });
+        apiElements.whenObjectAdded(c -> {
+            firstFound.updateAndGet(old -> old == null ? c : old);
+            apiElementsLocated.set(true);
+            onConfig.run();
+        });
+        apiElements.all(c -> {
+            firstFound.updateAndGet(old -> old == null ? c : old);
+            apiElementsLocated.set(true);
+            onConfig.run();
+        });
     }
 }
