@@ -12,7 +12,6 @@ import org.gradle.api.tasks.SourceSetContainer;
 import org.gradle.api.tasks.TaskContainer;
 import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.jvm.toolchain.JavaToolchainService;
-import org.gradle.jvm.toolchain.JvmImplementation;
 import org.gradle.jvm.toolchain.JvmVendorSpec;
 
 import javax.inject.Inject;
@@ -82,25 +81,23 @@ public abstract class ExtendedJavaConventions {
         var runtimeClasspath = getConfigurations().named(sourceSet.getRuntimeClasspathConfigurationName());
         var compileClasspath = getConfigurations().named(sourceSet.getCompileClasspathConfigurationName());
 
-        var api = getConfigurations().named(sourceSet.getApiConfigurationName());
-        var implementation = getConfigurations().named(sourceSet.getImplementationConfigurationName());
-        var compileOnly = getConfigurations().named(sourceSet.getCompileOnlyConfigurationName());
-        var compileOnlyApi = getConfigurations().named(sourceSet.getCompileOnlyApiConfigurationName());
+        var apiElements = getConfigurations().named(sourceSet.getApiElementsConfigurationName());
+        var runtimeElements = getConfigurations().named(sourceSet.getRuntimeElementsConfigurationName());
 
         var requireStaticModules = getConfigurations().resolvable(sourceSet.getTaskName(null, "requireStaticModules"), c -> {
             c.setTransitive(spec.getIncludeTransitive().get());
             copyAttributes(compileClasspath.get(), c);
-            c.extendsFrom(api.get(), implementation.get(), compileOnlyApi.get(), compileOnly.get());
+            c.extendsFrom(compileClasspath.get());
         });
         var requireRuntimeModules = getConfigurations().resolvable(sourceSet.getTaskName(null, "requireRuntimeModules"), c -> {
             c.setTransitive(spec.getIncludeTransitive().get());
             copyAttributes(runtimeClasspath.get(), c);
-            c.extendsFrom(api.get(), implementation.get());
+            c.extendsFrom(runtimeElements.get());
         });
         var transitiveModules = getConfigurations().resolvable(sourceSet.getTaskName(null, "transitiveModules"), c -> {
             c.setTransitive(spec.getIncludeTransitive().get());
             copyAttributes(compileClasspath.get(), c);
-            c.extendsFrom(compileOnlyApi.get(), api.get());
+            c.extendsFrom(apiElements.get());
         });
 
         var generateTask = getTasks().register(sourceSet.getTaskName("generate", "moduleInfo"), GenerateModuleInfoTask.class, task -> {
