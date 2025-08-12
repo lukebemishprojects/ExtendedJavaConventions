@@ -3,13 +3,13 @@ package dev.lukebemish.extendedjavaconventions;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.DirectoryProperty;
-import org.gradle.api.file.RegularFileProperty;
-import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
-import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.CacheableTask;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.OutputDirectory;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.jvm.toolchain.JavaLauncher;
 import org.gradle.process.ExecOperations;
@@ -18,30 +18,30 @@ import org.jetbrains.annotations.Nullable;
 import javax.inject.Inject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.lang.module.ModuleDescriptor;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+@CacheableTask
 public abstract class GenerateModuleInfoTask extends DefaultTask {
     @InputFiles
+    @PathSensitive(PathSensitivity.NAME_ONLY)
     public abstract ConfigurableFileCollection getRequireStatic();
 
     @InputFiles
+    @PathSensitive(PathSensitivity.NAME_ONLY)
     public abstract ConfigurableFileCollection getRequireTransitive();
 
     @InputFiles
+    @PathSensitive(PathSensitivity.NAME_ONLY)
     public abstract ConfigurableFileCollection getRequireRuntime();
 
     @OutputDirectory
