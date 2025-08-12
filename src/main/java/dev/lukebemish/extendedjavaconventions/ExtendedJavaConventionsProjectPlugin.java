@@ -14,9 +14,6 @@ public abstract class ExtendedJavaConventionsProjectPlugin implements Plugin<Pro
     public void apply(Project target) {
         target.getPluginManager().withPlugin("java-base", p -> {
             var extension = target.getExtensions().create("extendedJavaConventions", ExtendedJavaConventions.class);
-            if (getProperty(ExtendedJavaConventionsProperties.SOURCEPATH)) {
-                extension.sourcepath();
-            }
             if (getProperty(ExtendedJavaConventionsProperties.LOCAL)) {
                 extension.local();
             }

@@ -90,19 +90,9 @@ class FeatureUtils {
         };
         var runtimeElements = project.getConfigurations().named(c -> c.equals(sourceSet.getRuntimeElementsConfigurationName()));
         var apiElements = project.getConfigurations().named(c -> c.equals(sourceSet.getApiElementsConfigurationName()));
-        runtimeElements.whenObjectAdded(c -> {
-            firstFound.updateAndGet(old -> old == null ? c : old);
-            runtimeElementsLocated.set(true);
-            onConfig.run();
-        });
         runtimeElements.all(c -> {
             firstFound.updateAndGet(old -> old == null ? c : old);
             runtimeElementsLocated.set(true);
-            onConfig.run();
-        });
-        apiElements.whenObjectAdded(c -> {
-            firstFound.updateAndGet(old -> old == null ? c : old);
-            apiElementsLocated.set(true);
             onConfig.run();
         });
         apiElements.all(c -> {

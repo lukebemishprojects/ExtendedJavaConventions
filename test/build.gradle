@@ -6,27 +6,21 @@ plugins {
 group = 'dev.lukebemish.extended-java-conventions.test'
 version = '1.0.0'
 
-java {
-    registerFeature('feature') {
-        usingSourceSet(sourceSets.create('feature'))
-    }
-    registerFeature('feature2') {
-        usingSourceSet(sourceSets.create('feature2'))
+repositories {
+    mavenCentral()
+}
+
+extendedJavaConventions {
+    generateModuleInfo(sourceSets.main) {
+        name = "test.testmodule"
+        exports "test.testmodule" to "test.othermodule"
+        requires "java.base"
     }
 }
 
 dependencies {
-    featureImplementation(project(':'))
-    implementation(project(':')) {
-        capabilities {
-            requireFeature('feature')
-        }
-    }
-    api(project(':')) {
-        capabilities {
-            requireFeature('feature2')
-        }
-    }
+    implementation("org.ow2.asm:asm-tree:9.8")
+    api("org.ow2.asm:asm:9.8")
 }
 
 publishing {
